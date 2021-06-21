@@ -55,7 +55,7 @@ $ roslaunch ara_irobot ara_irobot.launch
 
 In RVIZ, add the following visualization topics:
 
-- Add `LaserScan` and put `/scan` for the topic.
+- Add `LaserScan` and put `/scan` (or whatever the laser topic is) for the topic.
 - Add `Map` and put `/map` for the topic.
 - Add `RobotModel` so you know where it will be.
 
@@ -63,6 +63,7 @@ In RVIZ, add the following visualization topics:
 Add what whatever else you want!
 
 ## Sensor Information
+<i>Putting device serial into launch file works better</i>
 
 **Visual Odometry**
 Device Name: Intel RealSense T265
