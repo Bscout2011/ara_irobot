@@ -12,15 +12,17 @@ cd ~
 mkdir -p create_ws/src  # create new workspace/directory call create_ws and src in it
 cd create_ws  # go to create_ws from src
 catkin init # initialize
-cd ~/catkin_ws/src  # go into the src (source)
-git clone https://github.com/AutonomyLab/create_autonomy.git  # clone all stuff from create_autonomy
-cd ~/catkini_ws   # go to create_ws from src
+cd ~/catkin_ws/src  # go into the src directory (source)
+git clone https://github.com/Bscout2011/ara_irobot.git  # clone all stuff from create_autonomy
+git submodule init  # initialize submodule configuration
+git submodule udpate  # fetch submodule files into this project
+cd ~/catkin_ws   # go to create_ws from src
 rosdep update  # Install dependencies
 rosdep install --from-paths src -i  # Install dependencies
 
 cd ~/catkin_ws # go to create_ws if you aren’t there already
 
-catkin_make # build (catkin_make)
+catkin build # build (catkin_make)
 
 sudo usermod -a -G dialout $USER # In order to connect to Create over USB, ensure your user is in the dialout group
 
