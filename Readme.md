@@ -7,24 +7,24 @@ iRobot Create odom sucks. Please measure your wheel because you might run into p
 
 ### iRobot stuff:
 ```shell
-$ sudo apt-get install python-rosdep python-catkin-tools
-$ cd ~
-$ mkdir -p create_ws/src  # create new workspace/directory call create_ws and src in it
-$ cd create_ws  # go to create_ws from src
-$ catkin init /# initialize
-$ cd ~/catkin_ws/src  # go into the src (source)
-$ git clone https://github.com/AutonomyLab/create_autonomy.git  # clone all stuff from create_autonomy
-$ cd ~/catkini_ws   # go to create_ws from src
-$ rosdep update  # Install dependencies
-$ rosdep install --from-paths src -i  # Install dependencies
+sudo apt-get install python-rosdep python-catkin-tools
+cd ~
+mkdir -p create_ws/src  # create new workspace/directory call create_ws and src in it
+cd create_ws  # go to create_ws from src
+catkin init # initialize
+cd ~/catkin_ws/src  # go into the src (source)
+git clone https://github.com/AutonomyLab/create_autonomy.git  # clone all stuff from create_autonomy
+cd ~/catkini_ws   # go to create_ws from src
+rosdep update  # Install dependencies
+rosdep install --from-paths src -i  # Install dependencies
 
-$ cd ~/catkin_ws # go to create_ws if you aren’t there already
+cd ~/catkin_ws # go to create_ws if you aren’t there already
 
-$ catkin_make # build (catkin_make)
+catkin_make # build (catkin_make)
 
-$ sudo usermod -a -G dialout $USER # In order to connect to Create over USB, ensure your user is in the dialout group
+sudo usermod -a -G dialout $USER # In order to connect to Create over USB, ensure your user is in the dialout group
 
-$ source ~/catkin_ws/devel/setup.bash # source your workspace
+source ~/catkin_ws/devel/setup.bash # source your workspace
 ```
 
 

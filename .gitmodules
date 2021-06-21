@@ -1,0 +1,6 @@
+[submodule "create_autonomy"]
+	path = create_autonomy
+	url = https://github.com/AutonomyLab/create_autonomy.git
+[submodule "realsense-ros"]
+	path = realsense-ros
+	url = https://github.com/IntelRealSense/realsense-ros
