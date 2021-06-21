@@ -15,7 +15,7 @@ using namespace std;
 int main (int argc, char** argv){
     ros::init(argc, argv, "serial_example_node");
     ros::NodeHandle nh;
-
+    // comment
     ros::Publisher imu_pub = nh.advertise<std_msgs::Float64>("yaw_data", 10);
     std_msgs::Float64 yaw_data;
     try
