@@ -1,0 +1,10 @@
+<launch>
+
+    <include file="$(find create_bringup)/launch/create_2.launch"/>
+    <node name="urg_node" pkg="urg_node" type="urg_node" />
+    <node name="tf_base_laser" pkg="tf" type="static_transform_publisher" args="0 0 0 0 0 0 base_link laser 100"/>
+    <include file="$(find realsense2_camera)/launch/rs_t265.launch"/>
+    <node name="slam_gmapping" pkg="gmapping" type="slam_gmapping"/>
+    <node name="rviz" pkg="rviz" type="rviz"/>
+    <node name="teleop" pkg="teleop_twist_keyboard" type="teleop_twist_keyboard.py"/>
+</launch>
