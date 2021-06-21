@@ -75,17 +75,16 @@ Device Serial No: 042222071741
 
 **Laser Scanner**
 ID: H1101786
-
-
-            $roscore 
-            $roslaunch ca_driver create.2_launch
-            $rosrun hokuyo_node hokuyo_node
-            $rosrun tf static_transform_publisher 0 0 0 0 0 0 base_link laser 100
-            $roslaunch amcl amcl_diff.launch
-            $rosrun teleop_twist_keyboard teleop_twist_keyboard.py
-            $rosrun rviz rviz
+```shell
+roscore 
+roslaunch ca_driver create.2_launch
+rosrun hokuyo_node hokuyo_node
+rosrun tf static_transform_publisher 0 0 0 0 0 0 base_link laser 100
+roslaunch amcl amcl_diff.launch
+rosrun teleop_twist_keyboard teleop_twist_keyboard.py
+rosrun rviz rviz
 In rviz, add particle cloud
-
+```
 
 ONCE YOU ARE SATISFIED WITH YOUR MAP
 Amcl and save map:
