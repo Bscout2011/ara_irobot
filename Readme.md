@@ -9,18 +9,19 @@ iRobot Create odom sucks. Please measure your wheel because you might run into p
 ```shell
 sudo apt-get install python-rosdep python-catkin-tools
 cd ~
-mkdir -p create_ws/src  # create new workspace/directory call create_ws and src in it
-cd create_ws  # go to create_ws from src
+mkdir -p catkin_ws/src  # create new workspace/directory call catkin_ws and src in it
+cd catkin_ws  # go to catkin_ws from src
 catkin init # initialize
 cd ~/catkin_ws/src  # go into the src directory (source)
-git clone https://github.com/Bscout2011/ara_irobot.git  # clone all stuff from create_autonomy
-git submodule init  # initialize submodule configuration
-git submodule udpate  # fetch submodule files into this project
-cd ~/catkin_ws   # go to create_ws from src
+git clone https://github.com/Bscout2011/ara_irobot.git  # this repo
+git clone https://github.com/AutonomyLab/create_robot.git  # drivers for iRobot control
+git clone https://github.com/IntelRealSense/realsense-ros.git  # drivers for Visual Odometry and RGB Depth Cameras
+git clone https://github.com/tysik/obstacle_detector.git  # Laser Scan obstacle detection
+cd ~/catkin_ws   # go to catkin_ws from src
 rosdep update  # Install dependencies
 rosdep install --from-paths src -i  # Install dependencies
 
-cd ~/catkin_ws # go to create_ws if you aren’t there already
+cd ~/catkin_ws # go to catkin_ws if you aren’t there already
 
 catkin build # build (catkin_make)
 
