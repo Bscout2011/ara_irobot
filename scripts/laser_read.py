@@ -74,20 +74,19 @@ class Robot:
     def angular_vel(self, constant=1):
         return constant * (self.heading)
 
-    def avoid_obstacle(self):
+    def avoid_obstacle(self, fw_vel=0.1):
         """Point robot towards largest free space.
         """
         rospy.loginfo("Running avoid obstacle routine.")
         vel_msg = Twist()
-        #We wont use linear components
-        vel_msg.linear.x=0
+        #We wont use linear components        
         vel_msg.linear.y=0
         vel_msg.linear.z=0
         vel_msg.angular.x = 0
         vel_msg.angular.y = 0
-
+        
         while not rospy.is_shutdown():
-
+            vel_msg.linear.x=fw_vel
             vel_msg.angular.z = self.angular_vel()  # rotate CCW 0.1 radians/sec
 
             self.vel_pub.publish(vel_msg)
