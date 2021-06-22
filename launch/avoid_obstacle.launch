@@ -1,0 +1,7 @@
+<!-- This Launch file is for experimenting with a laser scanner -->
+<launch>
+    <include file="$(find create_bringup)/launch/create_2.launch"/>
+    <node name="tf_base_laser" pkg="tf" type="static_transform_publisher" args="0 0 0 0 0 0 base_link laser 100"/>
+    <node pkg="urg_node" type="urg_node" name="scan"/>
+    <node pkg="ara_irobot" type="laser_read.py" name="scan_values" output="screen"/>
+</launch>
