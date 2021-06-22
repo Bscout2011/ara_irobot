@@ -98,7 +98,7 @@ First try to get irobot to rotate and go straight to a goal. Then, consider obst
 Will update more on this
             OR
 Move_base:
-
+lol
 To create the move_base.launch file you go to:
 http://wiki.ros.org/navigation/Tutorials/RobotSetup
 The only difference is:
