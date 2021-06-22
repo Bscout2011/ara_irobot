@@ -69,6 +69,7 @@ class Robot:
         heading = np.arctan2(mag[0], mag[1])
 
         self.heading = heading
+        self.mag = np.sqrt(np.linalg.norm(mag))
         # print np.array2string(mag, precision=2), heading * 180 / np.pi
 
     def angular_vel(self, constant=1):
@@ -86,7 +87,7 @@ class Robot:
         vel_msg.angular.y = 0
         
         while not rospy.is_shutdown():
-            vel_msg.linear.x=fw_vel
+            vel_msg.linear.x=fw_vel * self.mag
             vel_msg.angular.z = self.angular_vel()  # rotate CCW 0.1 radians/sec
 
             self.vel_pub.publish(vel_msg)
