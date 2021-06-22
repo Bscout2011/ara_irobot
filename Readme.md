@@ -36,17 +36,14 @@ You can find the iRobot package and more about Publisher and Subscriber and etc.
 ### Teleop
 
 ```shell
-$ sudo apt-get install ros-<YOUR DISTRO>-teleop-twist-keyboard 
-# Ex: For indigo, 
-$ sudo apt-get install ros-indigo-teleop-twist-keyboard 
+sudo apt-get install ros-$ROS_DISTRO-teleop-twist-keyboard 
 ```
 
 ### Navigation
 
 ```shell
-$ sudo apt-get install ros-<YOUR DISTRO>-navigation
+sudo apt-get install ros-$ROS_DISTRO-navigation
 ```
-
 
 ## Connect
 

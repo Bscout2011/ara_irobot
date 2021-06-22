@@ -12,6 +12,7 @@ find_package(catkin REQUIRED COMPONENTS
   rospy
   std_msgs
   urg_node
+  geometry_msgs
   # obstacle_detector
 )
 
@@ -105,7 +106,7 @@ find_package(catkin REQUIRED COMPONENTS
 ## CATKIN_DEPENDS: catkin_packages dependent projects also need
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
- INCLUDE_DIRS deps
+#  INCLUDE_DIRS include
 #  LIBRARIES ara_irobot
 #  CATKIN_DEPENDS roscpp rospy std_msgs urg_node
 #  DEPENDS system_lib
@@ -119,7 +120,6 @@ catkin_package(
 ## Your package locations should be listed before other locations
 include_directories(
 # include
-  deps
   ${catkin_INCLUDE_DIRS}
 )
 
