@@ -12,6 +12,7 @@ find_package(catkin REQUIRED COMPONENTS
   rospy
   std_msgs
   urg_node
+  obstacle_detector
 )
 
 ## System dependencies are found with CMake's conventions
