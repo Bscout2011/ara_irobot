@@ -113,7 +113,7 @@ class Robot:
         self.heading_error.publish(point_msg)
         # print np.array2string(mag, precision=2), heading * 180 / np.pi
 
-    def angular_vel(self, constant=0.1):
+    def angular_vel(self, constant=2):
         return constant * (self.heading)
 
     def avoid_obstacle(self, fw_vel=0.1):
@@ -126,7 +126,7 @@ class Robot:
         vel_msg.linear.z=0
         vel_msg.angular.x = 0
         vel_msg.angular.y = 0
-        
+
         while not rospy.is_shutdown():
             vel_msg.linear.x=fw_vel #* self.mag
             vel_msg.angular.z = self.angular_vel()  # rotate CCW 0.1 radians/sec
