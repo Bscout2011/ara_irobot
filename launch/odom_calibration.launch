@@ -1,0 +1,7 @@
+<launch>
+    <include file="$(find create_bringup)/launch/create_2.launch">
+        <arg name="latch_cmd_duration" value=0/>
+    </include>
+    
+    <!-- <node name="rviz" pkg="rviz" type="rviz"/> -->
+</launch>

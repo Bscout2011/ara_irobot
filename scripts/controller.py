@@ -7,21 +7,24 @@ import rospy
 import numpy as np
 from rospy.numpy_msg import numpy_msg
 
+import tf
+
 from sensor_msgs.msg import LaserScan
 from std_msgs.msg import Empty
 from geometry_msgs.msg import Twist, PointStamped
 from visualization_msgs.msg import Marker
+from nav_msgs.msg import Odometry
 from create_msgs.msg import Bumper
 
 
 class Robot:
 
-    def __init__(self):
+    def __init__(self, safe_radius=0.15):
         # Creates a node
         rospy.init_node('robot_control')
 
         self.radius = 0.17  # robot radius in [m]
-        self.safe_radius = self.radius + 0.15  # laser scanner distance to stop when obstacle is detected
+        self.safe_radius = self.radius + safe_radius  # laser scanner distance to stop when obstacle is detected
 
         # Publisher to command velocity
         self.twist_pub = rospy.Publisher("cmd_vel", Twist, queue_size=10)
@@ -42,7 +45,31 @@ class Robot:
         self.hit = False
         self.bump_time = 0
         self.rate = rospy.Rate(10)  # 10hz
+
+        self.publish_safe_radius()
         
+
+    def publish_safe_radius(self):
+        vis_pub = rospy.Publisher("visualization_marker", Marker, queue_size=10)
+        marker = Marker()
+        marker.header.frame_id = "/base_link"
+        marker.header.stamp = rospy.Time()
+        marker.type = Marker.CYLINDER
+        marker.action = Marker.ADD
+        marker.pose.position.x = 0
+        marker.pose.position.y = 0
+        marker.pose.position.z = 0
+        marker.scale.x = self.safe_radius
+        marker.scale.y = self.safe_radius
+        marker.scale.z = 0.05
+        marker.color.a = 1.0
+        marker.color.r = 1.0
+        marker.color.g = 0.0
+        marker.color.b = 0.0
+        marker.pose.orientation.w = 1.0
+
+        vis_pub.publish(marker)
+
 
     def bumper_cb(self, msg):
         if msg.is_left_pressed:
@@ -156,32 +183,7 @@ class Robot:
     def timid(self, fw_vel=0.1):
         rospy.loginfo("Running timid behavior.")
 
-        vis_pub = rospy.Publisher("visualization_marker", Marker, queue_size=10)
-        marker = Marker()
-        marker.header.frame_id = "/base_link"
-        marker.header.stamp = rospy.Time()
-        marker.type = Marker.CYLINDER
-        marker.action = Marker.ADD
-        marker.pose.position.x = 0
-        marker.pose.position.y = 0
-        marker.pose.position.z = 0
-        marker.scale.x = self.safe_radius
-        marker.scale.y = self.safe_radius
-        marker.scale.z = 0.05
-        marker.color.a = 1.0
-        marker.color.r = 1.0
-        marker.color.g = 0.0
-        marker.color.b = 0.0
-        marker.pose.orientation.w = 1.0
-
-
         vel_msg = Twist()
-        #We wont use linear components        
-        vel_msg.linear.y=0
-        vel_msg.linear.z=0
-        vel_msg.angular.x = 0
-        vel_msg.angular.y = 0
-        vel_msg.angular.z = 0
 
         while not rospy.is_shutdown():
             if self.front_obstacle():
@@ -190,14 +192,58 @@ class Robot:
                 vel_msg.linear.x=fw_vel 
             
             self.twist_pub.publish(vel_msg)
-            vis_pub.publish(marker)
             self.rate.sleep()
+
+
+    def turn_degrees(self, degrees, angular_vel=0.1):
+        """Turn robot in place.
+
+        Args:
+            degrees (float): CCW is positive. CW is negative
+        """
+        rospy.loginfo("Turning %f.0 degrees."%degrees)
+
+        twist_msg = Twist()
+        initial_odom = rospy.wait_for_message("/odom", Odometry)
+        initial_pose = initial_odom.pose
+
+        q1_inv[0] = initial_pose.pose.orientation.x
+        q1_inv[1] = initial_pose.pose.orientation.y
+        q1_inv[2] = initial_pose.pose.orientation.z
+        q1_inv[3] = -initial_pose.pose.orientation.w # Negate for inverse
+
+        angle = degrees * np.pi / 180  # Convert degrees to rad
+        t = np.abs(angle / angular_vel)  # time
+        direction = np.sign(angle)
+
+        start_time = rospy.Time.now()
+        while rospy.Time.now() <= start_time + t:
+            twist_msg.angular.z = direction * angular_vel
+            self.twist_pub.publish(twist_msg)
+
+        final_odom = rospy.wait_for_message("/odom", Odometry)
+        final_pose = final_odom.pose
+
+        q2[0] = final_pose.pose.orientation.x
+        q2[1] = final_pose.pose.orientation.y
+        q2[2] = final_pose.pose.orientation.z
+        q2[3] = final_pose.pose.orientation.w
+
+        qr = tf.transformations.quaternion_multiply(q2, q1_inv)
+        euler_r = tf.transformations.euler_from_quaternion(qr)
+
+        rospy.loginfo("Relative quaternion:", qr)
+        rospy.loginfo("Relative euler:", euler_r)
+
+        
+        
+
 
 
 if __name__ == "__main__":
     try:
         x = Robot() 
-        x.timid()   
+        x.turn_degrees(90)   
 
     except rospy.ROSInterruptException:
         pass
