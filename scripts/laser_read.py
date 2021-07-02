@@ -10,6 +10,7 @@ from rospy.numpy_msg import numpy_msg
 from sensor_msgs.msg import LaserScan
 from std_msgs.msg import Empty
 from geometry_msgs.msg import Twist, PointStamped
+from visualization_msgs.msg import Marker
 from create_msgs.msg import Bumper
 
 
@@ -17,17 +18,24 @@ class Robot:
 
     def __init__(self):
         # Creates a node
-        rospy.init_node('laser_control')
+        rospy.init_node('robot_control')
+
+        self.radius = 0.17  # robot radius in [m]
+        self.safe_radius = self.radius + 0.15  # laser scanner distance to stop when obstacle is detected
 
         # Publisher to command velocity
-        self.vel_pub = rospy.Publisher("cmd_vel", Twist, queue_size=10)
+        self.twist_pub = rospy.Publisher("cmd_vel", Twist, queue_size=10)
         # Subscriber to the /scan when a message of type LaserScan is received
-        self.scan_sub = rospy.Subscriber('/scan', numpy_msg(LaserScan), self.compute_free_heading)
+        self.scan_sub = rospy.Subscriber('/scan', numpy_msg(LaserScan), self.convert_polar_to_cartesian)
         # Publisher for avoid_obstacle heading
         self.heading_error = rospy.Publisher("heading_error", PointStamped, queue_size=10)
-        
+        # Shutdown if robot is picked up.
         self.wheel_drop_sub = rospy.Subscriber("/wheeldrop", Empty, self.wheel_drop)
         # self.bumper_sub = rospy.Subscriber("/bumper", Bumper, self.bumper_cb)
+
+        self.scan_points = None
+        self.scan_angles = None
+        self.scan_range = None
 
         self.heading = 0
         self.mag = 0
@@ -80,28 +88,29 @@ class Robot:
 
 
     def convert_polar_to_cartesian(self, msg):
-        num_rays = len(msg.ranges)
         # Zero angle is in front of sensor
-        angles = msg.angle_min + msg.angle_increment * np.arange(num_rays)
+        if self.scan_angles is None:
+            num_rays = len(msg.ranges)
+            self.scan_angles = msg.angle_min + msg.angle_increment * np.arange(num_rays)
         rays = np.array(msg.ranges)
         # Replace nan with range_max
         nan_idx = np.isnan(rays)
         rays[nan_idx] = msg.range_max
         # Convert polar to cartesian coordinates
-        points = np.array([rays * np.sin(angles), rays * np.cos(angles)])
-        return points, angles
-        
+        points = np.array([rays * np.cos(self.scan_angles), rays * np.sin(self.scan_angles)])
+        self.scan_points = points
+        self.scan_range = rays
+
 
     def compute_free_heading(self, scan):
         """Callback function to find a heading towards free space.
         """
-        points, angles = self.convert_polar_to_cartesian(scan)
         # Weight each point from least important in front, to most important at the sides
-        weights = np.abs(np.sin(angles))
+        weights = np.abs(np.sin(self.scan_angles))
         weights = weights / np.sum(weights)  # make this a convex combination
         # Combine all laser points with their convex weights
         # magnitude = np.sum((1 / points) * weights, axis=1)
-        mag = (points * weights).sum(axis=1)
+        mag = (self.scan_points * weights).sum(axis=1)
         heading = np.arctan2(mag[0], mag[1])
 
         self.heading = heading
@@ -116,7 +125,14 @@ class Robot:
     def angular_vel(self, constant=2):
         return constant * (self.heading)
 
-    def avoid_obstacle(self, fw_vel=0.1):
+    def front_obstacle(self):
+        """Return true if an obstacle is in front and within the robot's footprint.
+        """
+        front_pts = np.logical_and(self.scan_range < self.safe_radius, self.scan_range > self.radius)
+        return front_pts.any()
+
+
+    def avoid_obstacle(self, fw_vel=0.1, angular_vel=0):
         """Point robot towards largest free space.
         """
         rospy.loginfo("Running avoid obstacle routine.")
@@ -132,15 +148,56 @@ class Robot:
             vel_msg.angular.z = self.angular_vel()  # rotate CCW 0.1 radians/sec
 
             if not self.hit:
-                self.vel_pub.publish(vel_msg)
+                self.twist_pub.publish(vel_msg)
 
+            self.rate.sleep()
+
+
+    def timid(self, fw_vel=0.1):
+        rospy.loginfo("Running timid behavior.")
+
+        vis_pub = rospy.Publisher("visualization_marker", Marker, queue_size=10)
+        marker = Marker()
+        marker.header.frame_id = "/base_link"
+        marker.header.stamp = rospy.Time()
+        marker.type = Marker.CYLINDER
+        marker.action = Marker.ADD
+        marker.pose.position.x = 0
+        marker.pose.position.y = 0
+        marker.pose.position.z = 0
+        marker.scale.x = self.safe_radius
+        marker.scale.y = self.safe_radius
+        marker.scale.z = 0.05
+        marker.color.a = 1.0
+        marker.color.r = 1.0
+        marker.color.g = 0.0
+        marker.color.b = 0.0
+        marker.pose.orientation.w = 1.0
+
+
+        vel_msg = Twist()
+        #We wont use linear components        
+        vel_msg.linear.y=0
+        vel_msg.linear.z=0
+        vel_msg.angular.x = 0
+        vel_msg.angular.y = 0
+        vel_msg.angular.z = 0
+
+        while not rospy.is_shutdown():
+            if self.front_obstacle():
+                vel_msg.linear.x = 0
+            else:
+                vel_msg.linear.x=fw_vel 
+            
+            self.twist_pub.publish(vel_msg)
+            vis_pub.publish(marker)
             self.rate.sleep()
 
 
 if __name__ == "__main__":
     try:
         x = Robot() 
-        x.avoid_obstacle(0)   
+        x.timid()   
 
     except rospy.ROSInterruptException:
         pass

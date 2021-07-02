@@ -1,4 +1,5 @@
 <launch>
+    <include file="$(find create_bringup)/launch/create_2.launch"/>
     <include file="$(find realsense2_camera)/launch/rs_camera.launch">
         <!-- <arg name="serial_no" value="952322110878"/> -->
         <arg name="enable_pointcloud" value="true"/>

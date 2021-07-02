@@ -4,7 +4,7 @@
     <node name="urg_node" pkg="urg_node" type="urg_node" />
     <node name="tf_base_laser" pkg="tf" type="static_transform_publisher" args="0 0 0 0 0 0 base_link laser 100"/>
     <include file="$(find realsense2_camera)/launch/rs_t265.launch">
-        <arg name="serial_no" value="952322110878"/>
+        <arg name="serial_no" value="042222071741"/>
     <include/>
     <node name="slam_gmapping" pkg="gmapping" type="slam_gmapping"/>
     <node name="rviz" pkg="rviz" type="rviz"/>
