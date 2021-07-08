@@ -23,6 +23,7 @@ class Robot:
         # Creates a node
         rospy.init_node('robot_control')
 
+        self.L = 0.235  # wheel base width
         self.radius = 0.17  # robot radius in [m]
         self.safe_radius = self.radius + safe_radius  # laser scanner distance to stop when obstacle is detected
 
@@ -129,6 +130,33 @@ class Robot:
         self.scan_range = rays
 
 
+    def obstacle_sector(self):
+        """Divide front halfspace into 5 sectors, each 36 deg. 
+        Output which sector, if any, has the closest object within the safe_radius.
+
+        Returns: -1 if no object. 1 if object left. 2 if object front. 3 if object right
+        """
+        front_pts = np.logical_and(self.scan_range < self.safe_radius, self.scan_range > self.radius)
+        if not front_pts.any():
+            return -1
+        # divide points into 3 regions of 60 deg
+        bins = [self.scan_angles.max(), np.pi/6, -np.pi/6, self.scan_angles.min()]
+        sectors = np.digitize(self.scan_angles, bins)[front_pts]
+        object_sector = sectors[self.scan_range[front_pts].argmin()]
+        return object_sector
+
+
+    def object_left(self):
+        """Output True if an object is detect left.
+        """
+        front_pts = np.logical_and(self.scan_range < self.safe_radius, self.scan_range > self.radius)
+        if not front_pts.any():
+            return False
+
+        left_right_idx = self.scan_angles[front_pts] > 0
+        return left_right_idx.any()
+
+
     def compute_free_heading(self, scan):
         """Callback function to find a heading towards free space.
         """
@@ -181,6 +209,8 @@ class Robot:
 
 
     def timid(self, fw_vel=0.1):
+        """Move forward until detect object within safe radius.
+        """
         rospy.loginfo("Running timid behavior.")
 
         vel_msg = Twist()
@@ -195,18 +225,123 @@ class Robot:
             self.rate.sleep()
 
 
+    def indecisive(self, fw_vel=0.1):
+        """Move forward until detect object within safe radius,
+        then move backward until object out of safe radius.
+        """
+        rospy.loginfo("Running indecisive behavior.")
+
+        vel_msg = Twist()
+
+        while not rospy.is_shutdown():
+            if self.front_obstacle():
+                vel_msg.linear.x = -fw_vel
+            else:
+                vel_msg.linear.x = fw_vel 
+            
+            self.twist_pub.publish(vel_msg)
+            self.rate.sleep()
+
+
+    def dogged(self, fw_vel=0.1):
+        """Move away from object in front or behind.
+        """
+        rospy.loginfo("Running dogged behavior.")
+
+        vel_msg = Twist()
+
+        while not rospy.is_shutdown():
+            if self.front_obstacle():
+                vel_msg.linear.x = -fw_vel
+            else:
+                vel_msg.linear.x = 0 
+            
+            self.twist_pub.publish(vel_msg)
+            self.rate.sleep()
+
+
+    def paranoid(self, fw_vel=0.1, angular_vel=0.5):            
+        rospy.loginfo("Running paranoid behavior")
+
+        vel_msg = Twist()
+
+        while not rospy.is_shutdown():
+            
+            sector = self.obstacle_sector()
+            print sector
+
+            if sector == 0:
+                vel_msg.linear.x = 0
+                vel_msg.angular.z = 0
+            elif sector == 1:
+                vel_msg.linear.x = 0
+                vel_msg.angular.z = angular_vel
+            elif sector == 2:
+                vel_msg.linear.x = fw_vel
+                vel_msg.angular.z = 0
+            elif sector == 3:
+                vel_msg.linear.x = 0
+                vel_msg.angular.z = -angular_vel
+            
+            self.twist_pub.publish(vel_msg)
+            self.rate.sleep()
+
+    def insecure(self, fw_vel=0.1):
+        """Turn away from object on the left.
+        """
+        rospy.loginfo("Running insecure behavior.")
+
+        vel_msg = Twist()
+        v = fw_vel / 2
+        omega = fw_vel / self.L
+
+        while not rospy.is_shutdown():
+            if self.object_left():
+                # Object detected on the left. Turn right
+                vel_msg.linear.x = v
+                vel_msg.angular.z = -omega
+            else:
+                # No object on left. Turn left
+                vel_msg.linear.x = v
+                vel_msg.angular.z = omega
+            
+            self.twist_pub.publish(vel_msg)
+            self.rate.sleep()
+
+    def driven(self, fw_vel=0.1):
+        """Turn towards from object on the left.
+        """
+        rospy.loginfo("Running driven behavior.")
+
+        vel_msg = Twist()
+        v = fw_vel / 2
+        omega = fw_vel / self.L
+
+        while not rospy.is_shutdown():
+            if self.object_left():
+                # Object detected on the left. Turn right
+                vel_msg.linear.x = v
+                vel_msg.angular.z = omega
+            else:
+                # No object on left. Turn left
+                vel_msg.linear.x = v
+                vel_msg.angular.z = -omega
+            
+            self.twist_pub.publish(vel_msg)
+            self.rate.sleep()
+
+
     def turn_degrees(self, degrees, angular_vel=0.1):
         """Turn robot in place.
 
         Args:
             degrees (float): CCW is positive. CW is negative
         """
-        rospy.loginfo("Turning %f.0 degrees."%degrees)
-
         twist_msg = Twist()
         initial_odom = rospy.wait_for_message("/odom", Odometry)
         initial_pose = initial_odom.pose
 
+        q1_inv = np.zeros(4)
         q1_inv[0] = initial_pose.pose.orientation.x
         q1_inv[1] = initial_pose.pose.orientation.y
         q1_inv[2] = initial_pose.pose.orientation.z
@@ -216,14 +351,17 @@ class Robot:
         t = np.abs(angle / angular_vel)  # time
         direction = np.sign(angle)
 
-        start_time = rospy.Time.now()
-        while rospy.Time.now() <= start_time + t:
+        start_time = rospy.get_time()
+        while rospy.get_time() <= start_time + t:
             twist_msg.angular.z = direction * angular_vel
             self.twist_pub.publish(twist_msg)
+            
+            self.rate.sleep()
 
         final_odom = rospy.wait_for_message("/odom", Odometry)
         final_pose = final_odom.pose
 
+        q2 = np.zeros(4)
         q2[0] = final_pose.pose.orientation.x
         q2[1] = final_pose.pose.orientation.y
         q2[2] = final_pose.pose.orientation.z
@@ -231,19 +369,54 @@ class Robot:
 
         qr = tf.transformations.quaternion_multiply(q2, q1_inv)
         euler_r = tf.transformations.euler_from_quaternion(qr)
+        odom_angle = euler_r[2] * 180 / np.pi
+        error = degrees - odom_angle
 
-        rospy.loginfo("Relative quaternion:", qr)
-        rospy.loginfo("Relative euler:", euler_r)
+        rospy.loginfo("Relative odom error: %.1f"%error)
+        return error
 
         
         
 
+def stationary_rotation(angle, speed, n_trials):
 
-
-if __name__ == "__main__":
     try:
+        rospy.loginfo("Turning %.0f degrees in %.1f seconds."%(degrees, t))
         x = Robot() 
-        x.turn_degrees(90)   
+        for _ in range(n_trials):
+            x.turn_degrees(angle, speed)   
+            x.turn_degrees(-angle, speed)
+    
+    except rospy.ROSInterruptException:
+        pass
+    
+
+def behavior(name):
+    try:
+        x = Robot()
+        
+        if name == "indecisive":
+            x.indecisive()
+        elif name == "timid":
+            x.timid()
+        elif name == "dogged":
+            x.dogged()
+        elif name == "paranoid":
+            x.paranoid()
+        elif name == "insecure":
+            x.insecure()
+        elif name == "driven":
+            x.driven()
+        else:
+            print "Behavior not implemented"
+
 
     except rospy.ROSInterruptException:
         pass
+
+if __name__ == "__main__":
+    # stationary_rotation(90, 2, 4)
+    behavior("driven")
+    
+    
+    

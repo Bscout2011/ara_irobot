@@ -1,8 +1,8 @@
 <launch>
     <include file="$(find create_bringup)/launch/create_2.launch"/>
-    <include file="$(find realsense2_camera)/launch/rs_camera.launch">
+    <include file="$(find realsense2_camera)/launch/rs_d400_and_t265.launch">
         <!-- <arg name="serial_no" value="952322110878"/> -->
-        <arg name="enable_pointcloud" value="true"/>
+        <!-- <arg name="enable_pointcloud" value="true"/> -->
     </include>
     <node name="urg_node" pkg="urg_node" type="urg_node" />
     <node name="tf_base_laser" pkg="tf" type="static_transform_publisher" args=".03 -.05 .13 0 0 0 base_link laser 100"/>

@@ -55,8 +55,8 @@ $ roslaunch ara_irobot ara_irobot.launch
 
 In RVIZ, add the following visualization topics:
 
-- Add `LaserScan` and put `/scan` (or whatever the laser topic is) for the topic.
-- Add `Map` and put `/map` for the topic.
+- Add `LaserScan` under topic `/scan`.
+- Add `Map` under topic `/map`.
 - Add `RobotModel` so you know where it will be.
 
 
