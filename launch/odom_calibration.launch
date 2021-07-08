@@ -1,7 +1,11 @@
 <launch>
     <include file="$(find create_bringup)/launch/create_2.launch">
-        <arg name="latch_cmd_duration" value=0/>
+        <param name="latch_cmd_duration" value="0"/>
     </include>
-    
+
+    <include file="$(find realsense2_camera)/launch/rs_d400_and_t265.launch">
+        <!-- <arg name="enable_pointcloud" value="true"/> -->
+    </include>
+    <node name="tf_base_camera" pkg="tf" type="static_transform_publisher" args="0 0 .20 0 -.12 0 base_link camera_link 100"/>
     <!-- <node name="rviz" pkg="rviz" type="rviz"/> -->
 </launch>

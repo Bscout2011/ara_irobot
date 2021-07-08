@@ -1,5 +1,0 @@
-<!-- This Launch file is for experimenting with a laser scanner -->
-<launch>
-    <!-- <node pkg="urg_node" type="urg_node" name="scan"/> -->
-    <node pkg="ara_irobot" type="laser_read.py" name="scan_values" output="screen"/>
-</launch>
