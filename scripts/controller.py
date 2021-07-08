@@ -375,7 +375,44 @@ class Robot:
         rospy.loginfo("Relative odom error: %.1f"%error)
         return error
 
-        
+    def line_following(self, fw_vel=0.5, ang_vel=1, sensor="left"):
+        """Implement a line following robot.
+
+        Args:
+            fw_vel (float, optional): Forward velocity. Defaults to 0.5.
+            ang_vel (float, optional): Angular turning velocity. Defaults to 1.
+            sensor (string, optional): which sensor to use for line following. 
+                    Options are ('left', 'front-left', 'front-right', 'right').
+                    Defaults to 'left'.
+        """
+        sensor_thresholds = {
+            "left":         (2650, 2750),
+            "front-left":   (2750, 2825),
+            "front-right":  (2650, 2750),
+            "right":        (2700, 2750)
+        }
+
+        if sensor not in sensor_thresholds:
+            raise KeyError("Invalid sensor passed.")
+
+        thres = sensor_thresholds[sensor]
+
+        vel_msg = Twist()
+        v = fw_vel
+        omega = ang_vel
+
+        while not rospy.is_shutdown():
+            if self.object_left():
+                # Object detected on the left. Turn right
+                vel_msg.linear.x = v
+                vel_msg.angular.z = omega
+            else:
+                # No object on left. Turn left
+                vel_msg.linear.x = v
+                vel_msg.angular.z = -omega
+            
+            self.twist_pub.publish(vel_msg)
+            self.rate.sleep()
         
 
 def stationary_rotation(angle, speed, n_trials):
