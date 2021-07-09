@@ -2,7 +2,6 @@
 
 # This script is built off a tutorial from https://www.theconstructsim.com/read-laserscan-data/
 
-from numpy.lib.financial import rate
 import rospy
 import numpy as np
 from rospy.numpy_msg import numpy_msg
@@ -14,7 +13,11 @@ from std_msgs.msg import Empty
 from geometry_msgs.msg import Twist, PointStamped
 from visualization_msgs.msg import Marker
 from nav_msgs.msg import Odometry
-from create_msgs.msg import Bumper
+from create_msgs.msg import Bumper, Cliff
+
+
+DEG2RAD = np.pi / 180.0
+RAD2DEG = 180 / np.pi
 
 
 class Robot:
@@ -23,30 +26,37 @@ class Robot:
         # Creates a node
         rospy.init_node('robot_control')
 
+        # Define variables
         self.L = 0.235  # wheel base width
         self.radius = 0.17  # robot radius in [m]
         self.safe_radius = self.radius + safe_radius  # laser scanner distance to stop when obstacle is detected
 
-        # Publisher to command velocity
-        self.twist_pub = rospy.Publisher("cmd_vel", Twist, queue_size=10)
-        # Subscriber to the /scan when a message of type LaserScan is received
-        self.scan_sub = rospy.Subscriber('/scan', numpy_msg(LaserScan), self.convert_polar_to_cartesian)
-        # Publisher for avoid_obstacle heading
-        self.heading_error = rospy.Publisher("heading_error", PointStamped, queue_size=10)
-        # Shutdown if robot is picked up.
-        self.wheel_drop_sub = rospy.Subscriber("/wheeldrop", Empty, self.wheel_drop)
-        # self.bumper_sub = rospy.Subscriber("/bumper", Bumper, self.bumper_cb)
-
+        # Processed Laser Scan points
         self.scan_points = None
         self.scan_angles = None
         self.scan_range = None
+        self.object_sector = np.array([0, 0, 0])
+        self.object_range = 2.0
 
-        self.heading = 0
+        self.heading = 0.0
+        self.prev_heading = 0.0
         self.mag = 0
         self.hit = False
         self.bump_time = 0
         self.rate = rospy.Rate(10)  # 10hz
 
+        # Publishers 
+        self.twist_pub = rospy.Publisher("cmd_vel", Twist, queue_size=10)
+        self.heading_error = rospy.Publisher("heading_error", PointStamped, queue_size=10)
+
+        # Subscribers 
+        self.scan_sub = rospy.Subscriber('/scan', numpy_msg(LaserScan), self.convert_polar_to_cartesian)
+        self.odom_sub = rospy.Subscriber('/odom', Odometry, self.odom_cb)
+        self.bumper_sub = rospy.Subscriber("/bumper", Bumper, self.bumper_cb)
+        self.cliff_sub = rospy.Subscriber("/cliff", Cliff, self.cliff_cb)
+        # Shutdown if robot is picked up.
+        self.wheel_drop_sub = rospy.Subscriber("/wheeldrop", Empty, self.wheel_drop)
+        
         self.publish_safe_radius()
         
 
@@ -71,49 +81,21 @@ class Robot:
 
         vis_pub.publish(marker)
 
-
     def bumper_cb(self, msg):
-        if msg.is_left_pressed:
-            rospy.loginfo("Left bumper hit!")
-            self.move_back(-1)
+        pass
 
-        elif msg.is_right_pressed:
-            rospy.loginfo("Right bumper hit!")
-            self.move_back(1)
+    def cliff_cb(self, msg):
+        pass
 
-
-    def move_back(self, turn_rad):
-        now = rospy.get_time()
-        if now - self.bump_time < 2:
-            return
-        self.bump_time = rospy.get_time()
-        self.hit = True
-        vel_msg = Twist()
-
-        # Move back 1 sec
-        vel_msg.linear.x = -0.2
-        vel_msg.angular.z = 0
-        while rospy.get_time() - now < 1:
-            # rospy.loginfo("Time elapsed: %d", rospy.get_time() - now)
-            self.vel_pub.publish(vel_msg)
-            self.rate.sleep()
-
-        # Turn for 1 sec
-        vel_msg.linear.x = 0
-        vel_msg.angular.z = turn_rad
-        now = rospy.get_time()
-        while rospy.get_time() - now < 1:
-            # rospy.loginfo("Time elapsed: %d", rospy.get_time() - now)
-            self.vel_pub.publish(vel_msg)
-            self.rate.sleep()
-        
-        self.hit = False
-
+    def update_velocity(self, v, omega):
+        vel = Twist()
+        vel.linear.x = v
+        vel.angular.z = omega
+        self.twist_pub.publish(vel)
 
     def wheel_drop(self, msg):
         if msg:
             rospy.signal_shutdown("Wheel Drop. Shutting down.")
-
 
     def convert_polar_to_cartesian(self, msg):
         # Zero angle is in front of sensor
@@ -128,63 +110,27 @@ class Robot:
         points = np.array([rays * np.cos(self.scan_angles), rays * np.sin(self.scan_angles)])
         self.scan_points = points
         self.scan_range = rays
+        self.sector_min_range()
 
 
-    def obstacle_sector(self):
-        """Divide front halfspace into 5 sectors, each 36 deg. 
-        Output which sector, if any, has the closest object within the safe_radius.
-
-        Returns: -1 if no object. 1 if object left. 2 if object front. 3 if object right
+    def sector_min_range(self):
+        """Divide front halfspace into 3 sectors.
+        Sets self.object_sector with minimum laser scan range.
         """
-        front_pts = np.logical_and(self.scan_range < self.safe_radius, self.scan_range > self.radius)
-        if not front_pts.any():
-            return -1
+        front_pts = self.scan_range > self.radius  # omit points within the robot's footprint
         # divide points into 3 regions of 60 deg
         bins = [self.scan_angles.max(), np.pi/6, -np.pi/6, self.scan_angles.min()]
         sectors = np.digitize(self.scan_angles, bins)[front_pts]
-        object_sector = sectors[self.scan_range[front_pts].argmin()]
-        return object_sector
+        # for each sector, get the average distance of the minimum 3 points
+        min_elements = 3
+        for i in range(1, len(bins)+1):
+            self.object_sector[i-1] = np.partition(sectors[sectors == i], min_elements)[:min_elements].mean()
 
-
-    def object_left(self):
-        """Output True if an object is detect left.
+    def object_near(self):
+        """Return true if an obstacle is within the robot's footprint.
         """
-        front_pts = np.logical_and(self.scan_range < self.safe_radius, self.scan_range > self.radius)
-        if not front_pts.any():
-            return False
+        return (self.object_sector < self.safe_radius).any()
 
-        left_right_idx = self.scan_angles[front_pts] > 0
-        return left_right_idx.any()
-
-
-    def compute_free_heading(self, scan):
-        """Callback function to find a heading towards free space.
-        """
-        # Weight each point from least important in front, to most important at the sides
-        weights = np.abs(np.sin(self.scan_angles))
-        weights = weights / np.sum(weights)  # make this a convex combination
-        # Combine all laser points with their convex weights
-        # magnitude = np.sum((1 / points) * weights, axis=1)
-        mag = (self.scan_points * weights).sum(axis=1)
-        heading = np.arctan2(mag[0], mag[1])
-
-        self.heading = heading
-        self.mag = np.sqrt(np.linalg.norm(mag))
-        
-        point_msg = PointStamped()
-        point_msg.point.x = mag[0]
-        point_msg.point.y = mag[1]
-        self.heading_error.publish(point_msg)
-        # print np.array2string(mag, precision=2), heading * 180 / np.pi
-
-    def angular_vel(self, constant=2):
-        return constant * (self.heading)
-
-    def front_obstacle(self):
-        """Return true if an obstacle is in front and within the robot's footprint.
-        """
-        front_pts = np.logical_and(self.scan_range < self.safe_radius, self.scan_range > self.radius)
-        return front_pts.any()
 
 
     def avoid_obstacle(self, fw_vel=0.1, angular_vel=0):
@@ -285,6 +231,76 @@ class Robot:
             
             self.twist_pub.publish(vel_msg)
             self.rate.sleep()
+
+    def paranoid_state(self, fw_vel=0.5, angular_vel=0.5):
+        """State based paranoid behavior. 
+        
+        – When an object is detected in front of the robot, the robot moves forwards.
+       
+        – When an object is detected to the right of the robot, the robot turns right.
+        
+        – When an object is detected to the left of the robot, the robot turns left.
+        
+        – If the robot is turning (even if it no longer detects an object), 
+        it alternates the direction of its turn every second.
+        
+        – When no object is detected and the robot is not turning, the robot stops.
+
+        Args:
+            fw_vel (float, optional): Forward velocity. Defaults to 0.5.
+            angular_vel (float, optional): Turn velocity. Defaults to 0.5.
+        """
+        state = "Search"
+
+        direction = 1
+        turn_time = 1
+        turn_start_time = rospy.get_time()
+
+        while not rospy.is_shutdown():
+            if state == "Search":
+                if self.object_sector[1] < self.object_range:
+                    state = "Forward"
+                elif self.object_sector[0] < self.object_range:
+                    state = "Left"
+                elif self.object_sector[2] < self.object_range:
+                    state = "Right"
+                else:
+                    # Search alternating left / right every 1 second.
+                    if turn_start_time + turn_time < rospy.get_time():
+                        # switch direction
+                        turn_start_time = rospy.get_time()
+                        direction *= -1
+                    self.update_velocity(0, direction * angular_vel)
+                    
+            elif state == "Left":
+                if self.object_sector[1] < self.object_range:
+                    state = "Forward"
+                else:
+                    self.update_velocity(0, angular_vel)
+
+            elif state == "Right":
+                if self.object_sector[1] < self.object_range:
+                    state = "Forward"
+                else:
+                    self.update_velocity(0, -angular_vel)
+
+            elif state == "Forward":
+                if self.object_near():
+                    print "Object in Front"
+                    state = "Found"
+                else:
+                    self.update_velocity(fw_vel, 0)
+
+            elif state == "Found":
+                self.update_velocity(0, 0)
+                if not self.object_near():
+                    print "No object near. Starting search."
+                    state = "Search"
+            else:
+                raise NotImplementedError("State [%s] not implemented"%state)
+
+            self.rate.sleep()
+
 
     def insecure(self, fw_vel=0.1):
         """Turn away from object on the left.
@@ -444,6 +460,8 @@ def behavior(name):
             x.insecure()
         elif name == "driven":
             x.driven()
+        elif name == "paranoid_state":
+            x.paranoid_state()
         else:
             print "Behavior not implemented"
 
@@ -453,7 +471,7 @@ def behavior(name):
 
 if __name__ == "__main__":
     # stationary_rotation(90, 2, 4)
-    behavior("driven")
+    behavior("paranoid_state")
     
     
     
