@@ -35,7 +35,7 @@ class Robot:
         self.scan_points = None
         self.scan_angles = None
         self.scan_range = None
-        self.object_sector = np.array([0, 0, 0])
+        self.object_sector = np.array([0.0, 0.0, 0.0])
         self.object_range = 2.0
 
         self.heading = 0.0
@@ -50,7 +50,7 @@ class Robot:
         self.heading_error = rospy.Publisher("heading_error", PointStamped, queue_size=10)
 
         # Subscribers 
-        self.scan_sub = rospy.Subscriber('/scan', numpy_msg(LaserScan), self.convert_polar_to_cartesian)
+        self.scan_sub = rospy.Subscriber('/scan', numpy_msg(LaserScan), self.laser_cb)
         self.odom_sub = rospy.Subscriber('/odom', Odometry, self.odom_cb)
         self.bumper_sub = rospy.Subscriber("/bumper", Bumper, self.bumper_cb)
         self.cliff_sub = rospy.Subscriber("/cliff", Cliff, self.cliff_cb)
@@ -87,6 +87,9 @@ class Robot:
     def cliff_cb(self, msg):
         pass
 
+    def odom_cb(self, msg):
+        pass
+
     def update_velocity(self, v, omega):
         vel = Twist()
         vel.linear.x = v
@@ -97,7 +100,7 @@ class Robot:
         if msg:
             rospy.signal_shutdown("Wheel Drop. Shutting down.")
 
-    def convert_polar_to_cartesian(self, msg):
+    def laser_cb(self, msg):
         # Zero angle is in front of sensor
         if self.scan_angles is None:
             num_rays = len(msg.ranges)
@@ -123,35 +126,15 @@ class Robot:
         sectors = np.digitize(self.scan_angles, bins)[front_pts]
         # for each sector, get the average distance of the minimum 3 points
         min_elements = 3
-        for i in range(1, len(bins)+1):
-            self.object_sector[i-1] = np.partition(sectors[sectors == i], min_elements)[:min_elements].mean()
+        for i in range(1, len(bins)):
+            sector_ranges = self.scan_range[front_pts][sectors == i]
+            sector_min_elements = np.partition(sector_ranges, min_elements)[:min_elements]
+            self.object_sector[i-1] = sector_min_elements.mean()
 
     def object_near(self):
         """Return true if an obstacle is within the robot's footprint.
         """
         return (self.object_sector < self.safe_radius).any()
-
-
-
-    def avoid_obstacle(self, fw_vel=0.1, angular_vel=0):
-        """Point robot towards largest free space.
-        """
-        rospy.loginfo("Running avoid obstacle routine.")
-        vel_msg = Twist()
-        #We wont use linear components        
-        vel_msg.linear.y=0
-        vel_msg.linear.z=0
-        vel_msg.angular.x = 0
-        vel_msg.angular.y = 0
-
-        while not rospy.is_shutdown():
-            vel_msg.linear.x=fw_vel #* self.mag
-            vel_msg.angular.z = self.angular_vel()  # rotate CCW 0.1 radians/sec
-
-            if not self.hit:
-                self.twist_pub.publish(vel_msg)
-
-            self.rate.sleep()
 
 
     def timid(self, fw_vel=0.1):
@@ -234,17 +217,12 @@ class Robot:
 
     def paranoid_state(self, fw_vel=0.5, angular_vel=0.5):
         """State based paranoid behavior. 
-        
-        – When an object is detected in front of the robot, the robot moves forwards.
-       
-        – When an object is detected to the right of the robot, the robot turns right.
-        
-        – When an object is detected to the left of the robot, the robot turns left.
-        
-        – If the robot is turning (even if it no longer detects an object), 
-        it alternates the direction of its turn every second.
-        
-        – When no object is detected and the robot is not turning, the robot stops.
+        - When an object is detected in front of the robot, the robot moves forwards.
+        - When an object is detected to the right of the robot, the robot turns right.
+        - When an object is detected to the left of the robot, the robot turns left.
+        - If the robot is turning (even if it no longer detects an object), 
+            it alternates the direction of its turn every second.
+        - When no object is detected and the robot is not turning, the robot stops.
 
         Args:
             fw_vel (float, optional): Forward velocity. Defaults to 0.5.
@@ -257,6 +235,7 @@ class Robot:
         turn_start_time = rospy.get_time()
 
         while not rospy.is_shutdown():
+            print state
             if state == "Search":
                 if self.object_sector[1] < self.object_range:
                     state = "Forward"
