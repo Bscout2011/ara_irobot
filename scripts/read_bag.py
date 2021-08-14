@@ -1,6 +1,7 @@
 import argparse
 
 from matplotlib.colors import LogNorm
+from numpy.core.numeric import identity
 import pyrealsense2 as rs
 import numpy as np
 import cv2
@@ -30,13 +31,34 @@ def slide_threshold(img):
     res = cv2.bitwise_and(img, img, mask=mask)
     return res
 
+
+def show_histograms(bgr_data, hsv_data):
+    print("Showing histograms")
+    fig, axs = plt.subplots(1, 2)
+    nbins = 10
+    
+    axs[0].hist2d(bgr_data[:,0], bgr_data[:,1], bins=nbins, norm=LogNorm())
+    axs[0].set_xlabel("B")
+    axs[0].set_ylabel("G")
+    axs[0].set_xlim([0, 255])
+    axs[0].set_ylim([0, 255])
+
+    axs[1].hist2d(hsv_data[:,1], hsv_data[:,2], bins=nbins, norm=LogNorm())
+    axs[1].set_xlabel("S")
+    axs[1].set_ylabel("V")
+    axs[1].set_xlim([0, 255])
+    axs[1].set_ylim([0, 255])
+
+    plt.show()
+
+
 def extract_from_bag(bag_fname, color_fname=None, depth_fname=None):
 
     config = rs.config()
     pipeline = rs.pipeline()
 
-    # make it so the stream does not continue looping
-    config.enable_stream(rs.stream.color)
+    
+    config.enable_stream(rs.stream.color, width=1280, height=720, format=rs.format.rgb8, framerate=30)
     config.enable_stream(rs.stream.depth)
     rs.config.enable_device_from_file(config, bag_fname, repeat_playback=True)
     profile = pipeline.start(config)
@@ -56,7 +78,7 @@ def extract_from_bag(bag_fname, color_fname=None, depth_fname=None):
     bgr_colors = []
     hsv_colors = []
 
-    cv2.namedWindow('Aligned Example', cv2.WINDOW_AUTOSIZE)
+    cv2.namedWindow('Aligned Example', cv2.WINDOW_NORMAL)
 
     # Now create 6 trackbars that will control the lower and upper range of 
     # H,S and V channels. The Arguments are like this: Name of trackbar, 
@@ -105,23 +127,28 @@ def extract_from_bag(bag_fname, color_fname=None, depth_fname=None):
         # convert color image to BGR for OpenCV
         color_image = cv2.cvtColor(color_image, cv2.COLOR_RGB2BGR)
         # Convert to HSV
-        hsv = cv2.cvtColor(color_image, cv2.COLOR_BGR2HSV)
+        # hsv = cv2.cvtColor(color_image, cv2.COLOR_BGR2HSV)
+
+        detector = cv2.SimpleBlobDetector()
+        # Detect Blobs
+        keypoints = detector.detect(color_image)
+        im_with_keypoints = cv2.drawKeypoints(color_image, keypoints, np.array([]),
+                    (0, 0, 255), cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
 
         # Output color in the center
-        x_center_coord, y_center_coord = color_frame.height // 2, color_frame.height // 2
-        bgr_center_color = color_image[x_center_coord, y_center_coord]
-        hsv_center_color = hsv[x_center_coord, y_center_coord]
-        # print("HSV Center Color:", center_color)
-        bgr_colors.append(bgr_center_color)
-        hsv_colors.append(hsv_center_color)
+        # x_center_coord, y_center_coord = color_frame.height // 2, color_frame.height // 2
+        # bgr_center_color = color_image[x_center_coord, y_center_coord]
+        # hsv_center_color = hsv[x_center_coord, y_center_coord]
+        # # print("HSV Center Color:", center_color)
+        # bgr_colors.append(bgr_center_color)
+        # hsv_colors.append(hsv_center_color)
 
         # res = slide_threshold(hsv)  # mask areas based on HSV colorspace
-        gray = cv2.cvtColor(color_image, cv2.COLOR_BGR2GRAY)
-
-        images = np.hstack((hsv, hsv))
         
+        images = np.hstack((color_image, im_with_keypoints))
         cv2.imshow('Aligned Example', images)
 
+        # Save
         if color_fname is not None:
             fname = "frame{:06d}".format(i) + ".png"
             cv2.imwrite(color_fname + fname, color_image)  # Don't Save
@@ -129,8 +156,8 @@ def extract_from_bag(bag_fname, color_fname=None, depth_fname=None):
         if depth_fname is not None:
             depth_matrices.append(scaled_depth_image)
 
-        key = cv2.waitKey(1)
         # Press esc or 'q' to close the image window
+        key = cv2.waitKey(1)
         if key & 0xFF == ord('q') or key == 27:
             cv2.destroyAllWindows()
             break
@@ -143,28 +170,9 @@ def extract_from_bag(bag_fname, color_fname=None, depth_fname=None):
         print("Size of depth matrices:", len(depth_matrices))
 
     # Show Histograms
-    print("Showing histograms")
-    bgr_colors = np.array(bgr_colors)
-    hsv_colors = np.array(hsv_colors)
+    # show_histograms(np.array(bgr_colors), np.array(hsv_colors))
 
-    fig, axs = plt.subplots(1, 2)
-    nbins = 10
     
-    axs[0].hist2d(bgr_colors[:,0], bgr_colors[:,1], bins=nbins, norm=LogNorm())
-    axs[0].set_xlabel("B")
-    axs[0].set_ylabel("G")
-    axs[0].set_xlim([0, 255])
-    axs[0].set_ylim([0, 255])
-
-    axs[1].hist2d(hsv_colors[:,1], hsv_colors[:,2], bins=nbins, norm=LogNorm())
-    axs[1].set_xlabel("S")
-    axs[1].set_ylabel("V")
-    axs[1].set_xlim([0, 255])
-    axs[1].set_ylim([0, 255])
-
-    plt.show()
-
-
 
 if __name__ == "__main__":
     # parser = argparse.ArgumentParser()
@@ -172,7 +180,7 @@ if __name__ == "__main__":
     # parser.add_argument("-c", "--rgbfilename", type=str, help=".mp4 file to save RGB stream")
     # parser.add_argument("-d", "--depthfilename", type=str, help=".npy file to save depth stream")
     # args = parser.parse_args()
-
-    fn = "/home/ara/roomba_ws/data/beam_stereo.bag"
-
+    data_dir = "/mnt/c/users/alwas/Documents"
+    fp = "ARA_Steel_Gym.bag"
+    fn = data_dir + '/' + fp
     extract_from_bag(bag_fname=fn)
