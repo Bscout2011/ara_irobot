@@ -1,6 +1,5 @@
 import argparse
 
-from matplotlib.colors import LogNorm
 from numpy.core.numeric import identity
 import pyrealsense2 as rs
 import numpy as np
@@ -78,7 +77,8 @@ def extract_from_bag(bag_fname, color_fname=None, depth_fname=None):
     bgr_colors = []
     hsv_colors = []
 
-    cv2.namedWindow('Aligned Example', cv2.WINDOW_NORMAL)
+    window_title = "Andrew\'s playground"
+    cv2.namedWindow(window_title, cv2.WINDOW_NORMAL)
 
     # Now create 6 trackbars that will control the lower and upper range of 
     # H,S and V channels. The Arguments are like this: Name of trackbar, 
@@ -91,11 +91,13 @@ def extract_from_bag(bag_fname, color_fname=None, depth_fname=None):
     # cv2.createTrackbar("U - S", "Aligned Example", 255, 255, nothing)
     # cv2.createTrackbar("U - V", "Aligned Example", 255, 255, nothing)
 
+
+
     ksize = 5
     # Canny filter Thresholds
-    max_val = 200
-    min_val = 100
-    
+    cv2.createTrackbar("Min Thres", window_title, 100, 200, nothing)
+    cv2.createTrackbar("Max Thres", window_title, 200, 250, nothing)
+
     ddepth = cv2.CV_16S
 
     i = 0
@@ -113,7 +115,7 @@ def extract_from_bag(bag_fname, color_fname=None, depth_fname=None):
             print('frame count', i-1)
             pipeline.stop()
             break
-
+        
         # align the depth to color frame
         aligned_frames = align.process(frames)
 
@@ -134,13 +136,7 @@ def extract_from_bag(bag_fname, color_fname=None, depth_fname=None):
         # convert color image to BGR for OpenCV
         color_image = cv2.cvtColor(color_image, cv2.COLOR_RGB2BGR)
         # Convert to HSV
-        # hsv = cv2.cvtColor(color_image, cv2.COLOR_BGR2HSV)
-
-        detector = cv2.SimpleBlobDetector()
-        # Detect Blobs
-        keypoints = detector.detect(color_image)
-        im_with_keypoints = cv2.drawKeypoints(color_image, keypoints, np.array([]),
-                    (0, 0, 255), cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+        im_hsv = cv2.cvtColor(color_image, cv2.COLOR_BGR2HSV)
 
         # Output color in the center
         # x_center_coord, y_center_coord = color_frame.height // 2, color_frame.height // 2
@@ -152,24 +148,30 @@ def extract_from_bag(bag_fname, color_fname=None, depth_fname=None):
 
         # res = slide_threshold(hsv)  # mask areas based on HSV colorspace
 
-        img_gray = cv2.cvtColor(color_image, cv2.COLOR_BGR2GRAY)
-        img_blur = cv2.GaussianBlur(img_gray, (3,3), 0)  # reduce noise, smooth intensity variation near edges
+        # img_gray = cv2.cvtColor(color_image, cv2.COLOR_BGR2GRAY)
+        # img_blur = cv2.GaussianBlur(img_gray, (3,3), 0)  # reduce noise, smooth intensity variation near edges
         
         # Sobel Edge Detection
         # Change depth (number of colors + number of channels) to avoid overflow
         # im_edge = cv2.Sobel(src=img_blur, ddepth=ddepth, dx=1, dy=0, ksize=ksize)
         # im_edge = cv2.Sobel(src=img_blur, ddepth=ddepth, dx=0, dy=1, ksize=ksize)
         # im_edge = cv2.Sobel(src=img_blur, ddepth=ddepth, dx=1, dy=1, ksize=ksize)
-        im_edge = cv2.Canny(color_image, 100, 150)
-
-        # im_edge = cv2.convertScaleAbs(im_edge)  # convert back to CV_8U
+        min_val = cv2.getTrackbarPos("Min Thres", window_title)
+        max_val = cv2.getTrackbarPos("Max Thres", window_title)
+        im_edge = cv2.Canny(im_hsv, min_val, max_val, L2gradient=True)
+        # Find Contours
+        contours, hierarchy = cv2.findContours(im_edge, mode=cv2.RETR_TREE, method=cv2.CHAIN_APPROX_NONE)
+        im_contour = color_image.copy()
+        cv2.drawContours(im_contour, contours=contours, 
+                contourIdx=-1, color=(0, 255,0), thickness=2, lineType=cv2.LINE_AA)
+        # 
+        im_edge = cv2.convertScaleAbs(im_edge)  # convert back to CV_8U
         im_edge = cv2.cvtColor(im_edge, cv2.COLOR_GRAY2BGR)  # extend to 3 channels
 
         # Concatenate Original with Processed image
-        images = np.hstack((color_image, im_edge))
+        images = np.hstack((color_image, depth_colormap))
         
-        images = np.hstack((color_image, im_with_keypoints))
-        cv2.imshow('Aligned Example', images)
+        cv2.imshow(window_title, images)
 
         # Save
         if color_fname is not None:
@@ -185,16 +187,6 @@ def extract_from_bag(bag_fname, color_fname=None, depth_fname=None):
             print("Exiting")
             cv2.destroyAllWindows()
             break
-        if (key == ord('k')) or (key == ord('K')):
-            ksize = ksize + 2 if ksize < 10 else 5
-        if (key == ord('m')) or (key == ord('M')):
-            max_val += 5
-        if (key == ord('n')) or (key == ord('N')):
-            max_val -= 5
-        if (key == ord('r')) or (key == ord('R')):
-            ksize = 5
-            max_val = 200
-            min_val = 100
         
         i += 1
 
@@ -210,7 +202,7 @@ if __name__ == "__main__":
     # parser.add_argument("-c", "--rgbfilename", type=str, help=".mp4 file to save RGB stream")
     # parser.add_argument("-d", "--depthfilename", type=str, help=".npy file to save depth stream")
     # args = parser.parse_args()
-    data_dir = "/home/ara/roomba_ws/data"
+    data_dir = "/mnt/c/users/alwas/Documents"
     fp = "fwd_beam"
     fn = data_dir + '/' + fp + ".bag"
     extract_from_bag(bag_fname=fn)
