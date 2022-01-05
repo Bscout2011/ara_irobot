@@ -6,6 +6,8 @@ import rospy
 import numpy as np
 from rospy.numpy_msg import numpy_msg
 
+from os import path
+
 import tf
 
 from sensor_msgs.msg import LaserScan
@@ -18,6 +20,7 @@ from create_msgs.msg import Bumper, Cliff
 
 DEG2RAD = np.pi / 180.0
 RAD2DEG = 180 / np.pi
+DATA_DIRECTORY = "/home/aralab/roomba_ws/results"
 
 
 class Robot:
@@ -57,6 +60,7 @@ class Robot:
         # Shutdown if robot is picked up.
         self.wheel_drop_sub = rospy.Subscriber("/wheeldrop", Empty, self.wheel_drop)
         
+        rospy.wait_for_message("/odom", Odometry)
         self.publish_safe_radius()
         
 
@@ -88,7 +92,7 @@ class Robot:
         pass
 
     def odom_cb(self, msg):
-        pass
+        self.odom = msg
 
     def update_velocity(self, v, omega):
         vel = Twist()
@@ -326,7 +330,7 @@ class Robot:
             self.rate.sleep()
 
 
-    def turn_degrees(self, degrees, angular_vel=0.1):
+    def turn_degrees(self, degrees, angular_vel=1):
         """Turn robot in place.
 
         Args:
@@ -409,11 +413,48 @@ class Robot:
             self.twist_pub.publish(vel_msg)
             self.rate.sleep()
         
+    def forward_dist(self, x=1, v=0.5):
+        """Drive forward `x` meters at `v` m/s speed.
+        v [float]: velocity. Experimental max is 0.35 m/s
+        """
+        if v > 0.5:
+            v = 0.5
+            
+        rospy.loginfo("Driving forward %.1f [m] at %.2f [m/s]."%(x, v))
+        t_start = rospy.get_time()
+        dt = x / v
+        poses = []
+        twists = []
+        while rospy.get_time() <= t_start + dt:
+            self.update_velocity(v, 0)
+            poses.append(self.odom.pose.pose)
+            twists.append(self.odom.twist.twist)
+            
+            self.rate.sleep()
+        # Get two time stamps after time stop
+        for _ in range(5):
+            self.update_velocity(0, 0)
+            poses.append(self.odom.pose.pose)
+            twists.append(self.odom.twist.twist)
+            self.rate.sleep()
+
+        # Save position data
+        odom = [(p.position.x, p.position.y, v.linear.x, v.linear.y) for p, v in zip(poses, twists)]
+        odom = np.array(odom)
+
+        fn = "odom_" + str(t_start) + ".npy"
+        with open(path.join(DATA_DIRECTORY, fn), 'wb') as f:
+            np.save(f, odom)
+
+
+
+        
+
 
 def stationary_rotation(angle, speed, n_trials):
 
     try:
-        rospy.loginfo("Turning %.0f degrees in %.1f seconds."%(degrees, t))
+        # rospy.loginfo("Turning %.0f degrees in %.1f seconds."%(degrees, t))
         x = Robot() 
         for _ in range(n_trials):
             x.turn_degrees(angle, speed)   
@@ -422,6 +463,20 @@ def stationary_rotation(angle, speed, n_trials):
     except rospy.ROSInterruptException:
         pass
     
+def odometry_trial(dist=1, speed=0.5):
+    try:
+        x = Robot()
+        for _ in range(3):
+            x.forward_dist(dist, speed)
+            rospy.sleep(.5)
+            x.turn_degrees(180)
+            rospy.sleep(.5)
+            x.forward_dist(dist, speed)
+            x.turn_degrees(-180)
+            rospy.sleep(.5)
+
+    except rospy.ROSInterruptException:
+        pass
 
 def behavior(name):
     try:
@@ -450,7 +505,7 @@ def behavior(name):
 
 if __name__ == "__main__":
     # stationary_rotation(90, 2, 4)
-    behavior("paranoid_state")
-    
+    # behavior("paranoid_state")
+    odometry_trial(2, .33)
     
     
